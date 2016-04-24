@@ -35,10 +35,14 @@
 #define AM2301 21
 
 enum DhtReadState {
-    DHT_GOOD, DHT_ERROR
+    DHT_GOOD, DHT_NOT_YET_READ, DHT_ERROR
 };
 
-class DHT {
+enum State {
+    READY_FOR_READ_1, HIGH_IMPEDANCE_2, READING_VALUES_3
+};
+
+class DHT : public Task {
 private:
     uint8_t data[5];
     uint8_t _pin;
@@ -52,14 +56,21 @@ private:
     uint8_t _bit, _port;
 #endif
     uint32_t _maxcycles;
+    DhtReadState _lastresult;
+    State algState;
 
 public:
     DHT(uint8_t pin, uint8_t type = DHT22);
-
-    DhtReadState read();
-    float getTemperature();
-    float getHumidity();
+    float readTemperature();
     float computeHeatIndex(float temperature, float percentHumidity);
+    float readHumidity();
+    DhtReadState read();
+
+    virtual void run();
+
+    DhtReadState getLastresult() const {
+        return _lastresult;
+    }
 
 private:
     uint32_t expectPulse(bool level);
@@ -74,6 +85,7 @@ public:
     ~InterruptLock() {
         interrupts();
     }
+
 };
 
 #endif

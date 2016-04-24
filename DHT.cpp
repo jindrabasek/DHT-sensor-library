@@ -13,7 +13,10 @@
 #include <Task.h>
 
 DHT::DHT(uint8_t pin, uint8_t type) :
-        _pin(pin) {
+        Task(0, false),
+        _lastresult(DHT_NOT_YET_READ),
+        algState(READY_FOR_READ_1) {
+    _pin = pin;
 #ifndef ENABLE_DHT_22_ONLY
     _type = type;
 #endif
@@ -25,31 +28,34 @@ DHT::DHT(uint8_t pin, uint8_t type) :
                                                    // reading pulses from DHT sensor.
     // Note that count is now ignored as the DHT reading algorithm adjusts itself
     // basd on the speed of the processor.
+
+    SoftTimer::instance().add(this);
 }
 
-float DHT::getTemperature() {
+float DHT::readTemperature() {
     float f = NAN;
 
+    if (read() == DHT_GOOD) {
 #ifndef ENABLE_DHT_22_ONLY
-    switch (_type) {
-        case DHT11:
-        f = data[2];
+        switch (_type) {
+            case DHT11:
+            f = data[2];
+            break;
+            case DHT22:
+            case DHT21:
+#endif
+        f = data[2] & 0x7F;
+        f *= 256;
+        f += data[3];
+        f *= 0.1;
+        if (data[2] & 0x80) {
+            f *= -1;
+        }
+#ifndef ENABLE_DHT_22_ONLY
         break;
-        case DHT22:
-        case DHT21:
-#endif
-    f = data[2] & 0x7F;
-    f *= 256;
-    f += data[3];
-    f *= 0.1;
-    if (data[2] & 0x80) {
-        f *= -1;
     }
-#ifndef ENABLE_DHT_22_ONLY
-    break;
-}
 #endif
-
+    }
     return f;
 }
 
@@ -61,25 +67,26 @@ float DHT::getTemperature() {
  return (f - 32) * 0.55555;
  }*/
 
-float DHT::getHumidity() {
+float DHT::readHumidity() {
     float f = NAN;
+    if (read() == DHT_GOOD) {
 #ifndef ENABLE_DHT_22_ONLY
-    switch (_type) {
-        case DHT11:
+        switch (_type) {
+            case DHT11:
+            f = data[0];
+            break;
+            case DHT22:
+            case DHT21:
+#endif
         f = data[0];
-        break;
-        case DHT22:
-        case DHT21:
-#endif
-    f = data[0];
-    f *= 256;
-    f += data[1];
-    f *= 0.1;
+        f *= 256;
+        f += data[1];
+        f *= 0.1;
 #ifndef ENABLE_DHT_22_ONLY
-    break;
-}
+        break;
+    }
 #endif
-
+    }
     return f;
 }
 
@@ -117,105 +124,146 @@ float DHT::computeHeatIndex(float temperature, float percentHumidity) {
     return (hi - 32) * 0.55555; //convertFtoC(hi);
 }
 
-DhtReadState DHT::read() {
-
+void DHT::run() {
     // Send start signal.  See DHT datasheet for full signal diagram:
     //   http://www.adafruit.com/datasheets/Digital%20humidity%20and%20temperature%20sensor%20AM2302.pdf
 
-    // Go into high impedence state to let pull-up raise data line level and
-    // start the reading process.
-    pinMode(_pin, INPUT_PULLUP);
-    digitalWrite(_pin, HIGH);
-    delay(250);
-
-    uint32_t cycles[80];
-    {
-        pinMode(_pin, OUTPUT);
-        digitalWrite(_pin, LOW);
-        // First set data line low for 5 milliseconds blocking
-        for (int i = 0; i < 5; i++) {
-            delayMicroseconds(999);
+    switch (algState) {
+        case (READY_FOR_READ_1): {
+            break;
         }
-
-        // Turn off interrupts temporarily because the next sections are timing critical
-        // and we don't want any interruptions.
-        InterruptLock lock;
-
-        // End the start signal by setting data line high for 40 microseconds.
-        digitalWrite(_pin, HIGH);
-        delayMicroseconds(40);
-
-        // Now start reading the data line to get the value from the DHT sensor.
-        pinMode(_pin, INPUT_PULLUP);
-        delayMicroseconds(10); // Delay a bit to let sensor pull data line low.
-
-        // First expect a low signal for ~80 microseconds followed by a high signal
-        // for ~80 microseconds again.
-        if (expectPulse(LOW) == 0) {
-            DEBUG_PRINTLN(F("Timeout waiting for start signal low pulse."));
-            return DHT_ERROR;
+        case (HIGH_IMPEDANCE_2): {
+            DEBUG_PRINTLN(F("HIGH_IMPEDANCE_2"));
+            algState = READING_VALUES_3;
+            // Go into high impedence state to let pull-up raise data line level and
+            // start the reading process.
+            pinMode(_pin, INPUT_PULLUP);
+            digitalWrite(_pin, HIGH);
+            setPeriodUs(250000);
+            markJustCalled();
+            DEBUG_PRINTLN(millis());
+            DEBUG_PRINTLN(F("Exiting HIGH_IMPEDANCE_2"));
+            break;
         }
-        if (expectPulse(HIGH) == 0) {
-            DEBUG_PRINTLN(F("Timeout waiting for start signal high pulse."));
-            return DHT_ERROR;
-        }
+        default: {
+            DEBUG_PRINTLN(F("READING_VALUES_3"));
+            algState = READY_FOR_READ_1;
+            setEnabled(false);
 
-        // Now read the 40 bits sent by the sensor.  Each bit is sent as a 50
-        // microsecond low pulse followed by a variable length high pulse.  If the
-        // high pulse is ~28 microseconds then it's a 0 and if it's ~70 microseconds
-        // then it's a 1.  We measure the cycle count of the initial 50us low pulse
-        // and use that to compare to the cycle count of the high pulse to determine
-        // if the bit is a 0 (high state cycle count < low state cycle count), or a
-        // 1 (high state cycle count > low state cycle count). Note that for speed all
-        // the pulses are read into a array and then examined in a later step.
-        for (int i = 0; i < 80; i += 2) {
-            cycles[i] = expectPulse(LOW);
-            cycles[i + 1] = expectPulse(HIGH);
-        }
-    } // Timing critical code is now complete.
+            uint32_t cycles[80];
+            {
+                pinMode(_pin, OUTPUT);
+                digitalWrite(_pin, LOW);
+                // First set data line low for 20 milliseconds.
+                // Jindra: adjusted to 5
+                delay(5);
 
-    // Reset 40 bits of received data to zero.
-    data[0] = data[1] = data[2] = data[3] = data[4] = 0;
-    // Inspect pulses and determine which ones are 0 (high state cycle count < low
-    // state cycle count), or 1 (high state cycle count > low state cycle count).
-    for (int i = 0; i < 40; ++i) {
-        uint32_t lowCycles = cycles[2 * i];
-        uint32_t highCycles = cycles[2 * i + 1];
-        if ((lowCycles == 0) || (highCycles == 0)) {
-            DEBUG_PRINTLN(F("Timeout waiting for pulse."));
-            return DHT_ERROR;
+                // Turn off interrupts temporarily because the next sections are timing critical
+                // and we don't want any interruptions.
+                InterruptLock lock;
+
+                // End the start signal by setting data line high for 40 microseconds.
+                digitalWrite(_pin, HIGH);
+                delayMicroseconds(40);
+
+                // Now start reading the data line to get the value from the DHT sensor.
+                pinMode(_pin, INPUT_PULLUP);
+                delayMicroseconds(10); // Delay a bit to let sensor pull data line low.
+
+                // First expect a low signal for ~80 microseconds followed by a high signal
+                // for ~80 microseconds again.
+                if (expectPulse(LOW) == 0) {
+                    DEBUG_PRINTLN(
+                            F("Timeout waiting for start signal low pulse."));
+                    _lastresult = DHT_ERROR;
+                    break;
+                }
+                if (expectPulse(HIGH) == 0) {
+                    DEBUG_PRINTLN(
+                            F("Timeout waiting for start signal high pulse."));
+                    _lastresult = DHT_ERROR;
+                    break;
+                }
+
+                // Now read the 40 bits sent by the sensor.  Each bit is sent as a 50
+                // microsecond low pulse followed by a variable length high pulse.  If the
+                // high pulse is ~28 microseconds then it's a 0 and if it's ~70 microseconds
+                // then it's a 1.  We measure the cycle count of the initial 50us low pulse
+                // and use that to compare to the cycle count of the high pulse to determine
+                // if the bit is a 0 (high state cycle count < low state cycle count), or a
+                // 1 (high state cycle count > low state cycle count). Note that for speed all
+                // the pulses are read into a array and then examined in a later step.
+                for (int i = 0; i < 80; i += 2) {
+                    cycles[i] = expectPulse(LOW);
+                    cycles[i + 1] = expectPulse(HIGH);
+                }
+            } // Timing critical code is now complete.
+
+            // Reset 40 bits of received data to zero.
+            data[0] = data[1] = data[2] = data[3] = data[4] = 0;
+            // Inspect pulses and determine which ones are 0 (high state cycle count < low
+            // state cycle count), or 1 (high state cycle count > low state cycle count).
+            for (int i = 0; i < 40; ++i) {
+                uint32_t lowCycles = cycles[2 * i];
+                uint32_t highCycles = cycles[2 * i + 1];
+                if ((lowCycles == 0) || (highCycles == 0)) {
+                    DEBUG_PRINTLN(F("Timeout waiting for pulse."));
+                    _lastresult = DHT_ERROR;
+                    break;
+                }
+                data[i / 8] <<= 1;
+                // Now compare the low and high cycle times to see if the bit is a 0 or 1.
+                if (highCycles > lowCycles) {
+                    // High cycles are greater than 50us low cycle count, must be a 1.
+                    data[i / 8] |= 1;
+                }
+                // Else high cycles are less than (or equal to, a weird case) the 50us low
+                // cycle count so this must be a zero.  Nothing needs to be changed in the
+                // stored data.
+            }
+
+            DEBUG_PRINTLN(F("Received:"));
+            DEBUG_PRINT(data[0], HEX);
+            DEBUG_PRINT(F(", "));
+            DEBUG_PRINT(data[1], HEX);
+            DEBUG_PRINT(F(", "));
+            DEBUG_PRINT(data[2], HEX);
+            DEBUG_PRINT(F(", "));
+            DEBUG_PRINT(data[3], HEX);
+            DEBUG_PRINT(F(", "));
+            DEBUG_PRINT(data[4], HEX);
+            DEBUG_PRINT(F(" =? "));
+            DEBUG_PRINTLN((data[0] + data[1] + data[2] + data[3]) & 0xFF, HEX);
+
+            // Check we read 40 bits and that the checksum matches.
+            if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
+                _lastresult = DHT_GOOD;
+            } else {
+                DEBUG_PRINTLN(F("Checksum failure!"));
+                _lastresult = DHT_ERROR;
+            }
+
+            DEBUG_PRINTLN(millis());
+            DEBUG_PRINTLN(F("Exiting READING_VALUES_3"));
+            break;
         }
-        data[i / 8] <<= 1;
-        // Now compare the low and high cycle times to see if the bit is a 0 or 1.
-        if (highCycles > lowCycles) {
-            // High cycles are greater than 50us low cycle count, must be a 1.
-            data[i / 8] |= 1;
-        }
-        // Else high cycles are less than (or equal to, a weird case) the 50us low
-        // cycle count so this must be a zero.  Nothing needs to be changed in the
-        // stored data.
     }
 
-    DEBUG_PRINTLN(F("Received:"));
-    DEBUG_PRINT(data[0], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[1], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[2], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[3], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[4], HEX);
-    DEBUG_PRINT(F(" =? "));
-    DEBUG_PRINTLN((data[0] + data[1] + data[2] + data[3]) & 0xFF, HEX);
+}
 
-    // Check we read 40 bits and that the checksum matches.
-    if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
-        return DHT_GOOD;
-    } else {
-        DEBUG_PRINTLN(F("Checksum failure!"));
-        return DHT_ERROR;
+DhtReadState DHT::read() {
+
+    if (algState == READY_FOR_READ_1) {
+        DEBUG_PRINTLN(F("READY_FOR_READ_1"));
+        algState = HIGH_IMPEDANCE_2;
+        setPeriodUs(0);
+        startAtEarliestOportunity();
+        setEnabled(true);
+        DEBUG_PRINTLN(millis());
+        DEBUG_PRINTLN(F("Exiting READY_FOR_READ_1"));
     }
+
+    return _lastresult;
 }
 
 // Expect the signal line to be at the specified level for a period of time and
