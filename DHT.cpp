@@ -21,8 +21,6 @@ DHT::DHT(uint8_t pin, uint8_t type) :
     _bit = digitalPinToBitMask(pin);
     _port = digitalPinToPort(pin);
 #endif
-    _maxcycles = microsecondsToClockCycles(1000);  // 1 millisecond timeout for
-                                                   // reading pulses from DHT sensor.
     // Note that count is now ignored as the DHT reading algorithm adjusts itself
     // basd on the speed of the processor.
 }
@@ -232,7 +230,10 @@ uint32_t DHT::expectPulse(bool level) {
 #ifdef __AVR
     uint8_t portState = level ? _bit : 0;
     while ((*portInputRegister(_port) & _bit) == portState) {
-        if (count++ >= _maxcycles) {
+        if (count++ >= microsecondsToClockCycles(1000))
+            // 1 millisecond timeout for
+            // reading pulses from DHT sensor.
+        {
             return 0; // Exceeded timeout, fail.
         }
     }

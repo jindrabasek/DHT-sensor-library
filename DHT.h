@@ -51,7 +51,6 @@ private:
     // for the digital pin connected to the DHT.  Other platforms will use digitalRead.
     uint8_t _bit, _port;
 #endif
-    uint32_t _maxcycles;
 
 public:
     DHT(uint8_t pin, uint8_t type = DHT22);
