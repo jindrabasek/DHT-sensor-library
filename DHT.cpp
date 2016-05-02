@@ -9,8 +9,6 @@
 #include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <SoftTimer.h>
-#include <Task.h>
 
 DHT::DHT(uint8_t pin, uint8_t type) :
         _pin(pin) {
@@ -131,7 +129,7 @@ DhtReadState DHT::read() {
         pinMode(_pin, OUTPUT);
         digitalWrite(_pin, LOW);
         // First set data line low for 5 milliseconds blocking
-        for (int i = 0; i < 5; i++) {
+        for (uint8_t i = 0; i < 5; i++) {
             delayMicroseconds(999);
         }
 
@@ -166,7 +164,7 @@ DhtReadState DHT::read() {
         // if the bit is a 0 (high state cycle count < low state cycle count), or a
         // 1 (high state cycle count > low state cycle count). Note that for speed all
         // the pulses are read into a array and then examined in a later step.
-        for (int i = 0; i < 80; i += 2) {
+        for (uint8_t i = 0; i < 80; i += 2) {
             cycles[i] = expectPulse(LOW);
             cycles[i + 1] = expectPulse(HIGH);
         }
@@ -176,7 +174,7 @@ DhtReadState DHT::read() {
     data[0] = data[1] = data[2] = data[3] = data[4] = 0;
     // Inspect pulses and determine which ones are 0 (high state cycle count < low
     // state cycle count), or 1 (high state cycle count > low state cycle count).
-    for (int i = 0; i < 40; ++i) {
+    for (uint8_t i = 0; i < 40; ++i) {
         uint32_t lowCycles = cycles[2 * i];
         uint32_t highCycles = cycles[2 * i + 1];
         if ((lowCycles == 0) || (highCycles == 0)) {
