@@ -113,6 +113,12 @@ float DHT::computeHeatIndex(float temperature, float percentHumidity) {
     return (hi - 32) * 0.55555; //convertFtoC(hi);
 }
 
+float DHT::computeAbsoluteHumidity(float temperature, float percentHumidity) {
+    // https://carnotcycle.wordpress.com/2012/08/04/how-to-convert-relative-humidity-to-absolute-humidity/
+    return (6.112 * pow(M_E, (17.67 * temperature) / (temperature + 243.5))
+            * percentHumidity * 2.1674) / (273.15 + temperature);
+}
+
 DhtReadState DHT::read() {
 
     // Send start signal.  See DHT datasheet for full signal diagram:
@@ -229,8 +235,8 @@ uint32_t DHT::expectPulse(bool level) {
     uint8_t portState = level ? _bit : 0;
     while ((*portInputRegister(_port) & _bit) == portState) {
         if (count++ >= microsecondsToClockCycles(1000))
-            // 1 millisecond timeout for
-            // reading pulses from DHT sensor.
+        // 1 millisecond timeout for
+        // reading pulses from DHT sensor.
         {
             return 0; // Exceeded timeout, fail.
         }
