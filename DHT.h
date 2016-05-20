@@ -58,8 +58,8 @@ public:
     DhtReadState read();
     float getTemperature();
     float getHumidity();
-    float computeHeatIndex(float temperature, float percentHumidity);
-    float computeAbsoluteHumidity(float temperature, float percentHumidity);
+    static float computeHeatIndex(float temperature, float percentHumidity);
+    static float computeAbsoluteHumidity(float temperature, float percentHumidity);
 
 private:
     uint32_t expectPulse(bool level);
