@@ -134,8 +134,8 @@ DhtReadState DHT::read() {
     {
         pinMode(_pin, OUTPUT);
         digitalWrite(_pin, LOW);
-        // First set data line low for 5 milliseconds blocking
-        for (uint8_t i = 0; i < 5; i++) {
+        // First set data line low for 20 milliseconds blocking
+        for (uint8_t i = 0; i < 20; i++) {
             delayMicroseconds(999);
         }
 
