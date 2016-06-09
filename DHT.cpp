@@ -132,10 +132,11 @@ DhtReadState DHT::read() {
 
     uint32_t cycles[80];
     {
+
         pinMode(_pin, OUTPUT);
         digitalWrite(_pin, LOW);
         // First set data line low for 20 milliseconds blocking
-        for (uint8_t i = 0; i < 20; i++) {
+        for (uint8_t i = 0; i < 6; i++) {
             delayMicroseconds(999);
         }
 
@@ -154,12 +155,12 @@ DhtReadState DHT::read() {
         // First expect a low signal for ~80 microseconds followed by a high signal
         // for ~80 microseconds again.
         if (expectPulse(LOW) == 0) {
-            DEBUG_PRINTLN(F("Timeout waiting for start signal low pulse."));
-            return DHT_ERROR;
+            LOG_ERROR(F("Timeout waiting for start signal low pulse."));
+            return DHT_ERROR_EXPECT_LOW;
         }
         if (expectPulse(HIGH) == 0) {
-            DEBUG_PRINTLN(F("Timeout waiting for start signal high pulse."));
-            return DHT_ERROR;
+            LOG_ERROR(F("Timeout waiting for start signal high pulse."));
+            return DHT_ERROR_EXPECT_HIGH;
         }
 
         // Now read the 40 bits sent by the sensor.  Each bit is sent as a 50
@@ -184,8 +185,8 @@ DhtReadState DHT::read() {
         uint32_t lowCycles = cycles[2 * i];
         uint32_t highCycles = cycles[2 * i + 1];
         if ((lowCycles == 0) || (highCycles == 0)) {
-            DEBUG_PRINTLN(F("Timeout waiting for pulse."));
-            return DHT_ERROR;
+            LOG_ERROR1(F("Timeout waiting for pulse "), i);
+            return DHT_ERROR_TIMEOUT_PULSE;
         }
         data[i / 8] <<= 1;
         // Now compare the low and high cycle times to see if the bit is a 0 or 1.
@@ -198,25 +199,27 @@ DhtReadState DHT::read() {
         // stored data.
     }
 
-    DEBUG_PRINTLN(F("Received:"));
-    DEBUG_PRINT(data[0], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[1], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[2], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[3], HEX);
-    DEBUG_PRINT(F(", "));
-    DEBUG_PRINT(data[4], HEX);
-    DEBUG_PRINT(F(" =? "));
-    DEBUG_PRINTLN((data[0] + data[1] + data[2] + data[3]) & 0xFF, HEX);
+    if (LOG_LEVEL>LOGGER_LEVEL_DEBUG) {
+        LOGGER_FINEST.println(F("Received:"));
+        LOGGER_FINEST.print(data[0], HEX);
+        LOGGER_FINEST.print(F(", "));
+        LOGGER_FINEST.print(data[1], HEX);
+        LOGGER_FINEST.print(F(", "));
+        LOGGER_FINEST.print(data[2], HEX);
+        LOGGER_FINEST.print(F(", "));
+        LOGGER_FINEST.print(data[3], HEX);
+        LOGGER_FINEST.print(F(", "));
+        LOGGER_FINEST.print(data[4], HEX);
+        LOGGER_FINEST.print(F(" =? "));
+        LOGGER_FINEST.println((data[0] + data[1] + data[2] + data[3]) & 0xFF, HEX);
+    }
 
     // Check we read 40 bits and that the checksum matches.
     if (data[4] == ((data[0] + data[1] + data[2] + data[3]) & 0xFF)) {
         return DHT_GOOD;
     } else {
-        DEBUG_PRINTLN(F("Checksum failure!"));
-        return DHT_ERROR;
+        LOG_ERROR(F("Checksum failure!"));
+        return DHT_ERROR_CHECKSUM;
     }
 }
 

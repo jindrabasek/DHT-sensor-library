@@ -10,23 +10,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <Task.h>
+#include <Logger.h>
 
 #define ENABLE_DHT_22_ONLY
-
-// Uncomment to enable printing out nice debug messages.
-//#define DHT_DEBUG
-
-// Define where debug output will be printed.
-#define DEBUG_PRINTER Serial
-
-// Setup debug printing macros.
-#ifdef DHT_DEBUG
-#define DEBUG_PRINT(...) { DEBUG_PRINTER.print(__VA_ARGS__); }
-#define DEBUG_PRINTLN(...) { DEBUG_PRINTER.println(__VA_ARGS__); }
-#else
-#define DEBUG_PRINT(...) {}
-#define DEBUG_PRINTLN(...) {}
-#endif
 
 // Define types of sensors.
 #define DHT11 11
@@ -35,7 +21,7 @@
 #define AM2301 21
 
 enum DhtReadState {
-    DHT_GOOD, DHT_ERROR
+    DHT_GOOD, DHT_ERROR_EXPECT_LOW, DHT_ERROR_EXPECT_HIGH, DHT_ERROR_TIMEOUT_PULSE, DHT_ERROR_CHECKSUM
 };
 
 class DHT {
