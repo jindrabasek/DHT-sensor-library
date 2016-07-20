@@ -47,6 +47,10 @@ public:
     static float computeHeatIndex(float temperature, float percentHumidity);
     static float computeAbsoluteHumidity(float temperature, float percentHumidity);
 
+    uint8_t getPin() const {
+        return _pin;
+    }
+
 private:
     uint32_t expectPulse(bool level);
 
