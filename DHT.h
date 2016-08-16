@@ -26,7 +26,6 @@ enum DhtReadState {
 
 class DHT {
 private:
-    uint8_t data[5];
     uint8_t _pin;
 #ifndef ENABLE_DHT_22_ONLY
     uint8_t _type;
@@ -41,9 +40,9 @@ private:
 public:
     DHT(uint8_t pin, uint8_t type = DHT22);
 
-    DhtReadState read();
-    float getTemperature();
-    float getHumidity();
+    DhtReadState read(uint8_t data[5]);
+    static float getTemperature(uint8_t data[5]);
+    static float getHumidity(uint8_t data[5]);
     static float computeHeatIndex(float temperature, float percentHumidity);
     static float computeAbsoluteHumidity(float temperature, float percentHumidity);
 

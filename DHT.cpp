@@ -23,7 +23,7 @@ DHT::DHT(uint8_t pin, uint8_t type) :
     // basd on the speed of the processor.
 }
 
-float DHT::getTemperature() {
+float DHT::getTemperature(uint8_t data[5]) {
     float f = NAN;
 
 #ifndef ENABLE_DHT_22_ONLY
@@ -57,7 +57,7 @@ float DHT::getTemperature() {
  return (f - 32) * 0.55555;
  }*/
 
-float DHT::getHumidity() {
+float DHT::getHumidity(uint8_t data[5]) {
     float f = NAN;
 #ifndef ENABLE_DHT_22_ONLY
     switch (_type) {
@@ -119,7 +119,7 @@ float DHT::computeAbsoluteHumidity(float temperature, float percentHumidity) {
             * percentHumidity * 2.1674) / (273.15 + temperature);
 }
 
-DhtReadState DHT::read() {
+DhtReadState DHT::read(uint8_t data[5]) {
 
     // Send start signal.  See DHT datasheet for full signal diagram:
     //   http://www.adafruit.com/datasheets/Digital%20humidity%20and%20temperature%20sensor%20AM2302.pdf
@@ -132,12 +132,11 @@ DhtReadState DHT::read() {
 
     uint32_t cycles[80];
     {
-
         pinMode(_pin, OUTPUT);
         digitalWrite(_pin, LOW);
-        // First set data line low for 20 milliseconds blocking
-        for (uint8_t i = 0; i < 6; i++) {
-            delayMicroseconds(999);
+        // First set data line low for 8 milliseconds blocking
+        for (uint8_t i = 0; i < 8; i++) {
+            delayMicroseconds(1000);
         }
 
         // Turn off interrupts temporarily because the next sections are timing critical
@@ -237,8 +236,8 @@ uint32_t DHT::expectPulse(bool level) {
 #ifdef __AVR
     uint8_t portState = level ? _bit : 0;
     while ((*portInputRegister(_port) & _bit) == portState) {
-        if (count++ >= microsecondsToClockCycles(1000))
-        // 1 millisecond timeout for
+        if (count++ >= microsecondsToClockCycles(2000))
+        // 2 millisecond timeout for
         // reading pulses from DHT sensor.
         {
             return 0; // Exceeded timeout, fail.
